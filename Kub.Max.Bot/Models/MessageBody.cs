@@ -2,9 +2,9 @@
 
 namespace Kub.Max.Bot.Models;
 
-
+/// <summary>
 /// Тело сообщения.
-
+/// </summary>
 public class MessageBody
 {
     [JsonPropertyName("mid")]
@@ -20,9 +20,9 @@ public class MessageBody
     public List<MessageMarkup>? Markup { get; set; }
 }
 
-
+/// <summary>
 /// Разметка текста.
-
+/// </summary>
 public class MessageMarkup
 {
     [JsonPropertyName("type")]

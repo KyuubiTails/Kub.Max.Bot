@@ -1,10 +1,11 @@
-﻿using System.Text.Json.Serialization;
+﻿using Kub.Max.Bot.Models;
+using System.Text.Json.Serialization;
 
 namespace Kub.Max.Bot.Requests;
 
-
+/// <summary>
 /// Запрос на редактирование сообщения.
-
+/// </summary>
 public class EditMessageRequest
 {
     [JsonPropertyName("message_id")]
@@ -14,7 +15,7 @@ public class EditMessageRequest
     public string? Text { get; set; }
 
     [JsonPropertyName("attachments")]
-    public List<AttachmentRequest>? Attachments { get; set; }
+    public List<Attachment>? Attachments { get; set; }
 
     [JsonPropertyName("link")]
     public NewMessageLink? Link { get; set; }

@@ -123,3 +123,11 @@ public class InlineKeyboardAttachmentRequest : AttachmentRequest
     [JsonPropertyName("payload")]
     public new InlineKeyboardPayload Payload { get; set; } = new();
 }
+
+/// Полезная нагрузка inline-клавиатуры.
+
+public class InlineKeyboardPayload
+{
+    [JsonPropertyName("buttons")]
+    public List<List<InlineKeyboardButton>> Buttons { get; set; } = new();
+}

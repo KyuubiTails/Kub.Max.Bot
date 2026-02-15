@@ -3,9 +3,9 @@ using System.Text.Json.Serialization;
 
 namespace Kub.Max.Bot.Requests;
 
-
+/// <summary>
 /// Запрос на отправку сообщения.
-
+/// </summary>
 public class SendMessageRequest
 {
     [JsonPropertyName("user_id")]
@@ -21,7 +21,7 @@ public class SendMessageRequest
     public string? Text { get; set; }
 
     [JsonPropertyName("attachments")]
-    public List<AttachmentRequest>? Attachments { get; set; }
+    public List<Attachment>? Attachments { get; set; }
 
     [JsonPropertyName("link")]
     public NewMessageLink? Link { get; set; }
@@ -32,9 +32,9 @@ public class SendMessageRequest
     [JsonPropertyName("format")]
     public MessageFormat? Format { get; set; }
 
-    
+    /// <summary>
     /// Создаёт простое текстовое сообщение.
-    
+    /// </summary>
     public static SendMessageRequest CreateText(
         long chatId,
         string text,
@@ -50,9 +50,9 @@ public class SendMessageRequest
         };
     }
 
-    
+    /// <summary>
     /// Создаёт сообщение с inline-клавиатурой.
-    
+    /// </summary>
     public static SendMessageRequest CreateWithKeyboard(
         long chatId,
         string text,
@@ -66,15 +66,72 @@ public class SendMessageRequest
             Text = text,
             Format = format,
             DisableLinkPreview = disableLinkPreview,
-            Attachments = new List<AttachmentRequest>
+            Attachments = new List<Attachment>
             {
-                new InlineKeyboardAttachmentRequest
-                {
-                    Payload = new InlineKeyboardPayload
-                    {
-                        Buttons = keyboard
-                    }
-                }
+                Attachment.CreateKeyboard(keyboard)
+            }
+        };
+    }
+
+    /// <summary>
+    /// Создаёт сообщение с изображением.
+    /// </summary>
+    public static SendMessageRequest CreateWithImage(
+        long chatId,
+        string text,
+        string imageToken,
+        MessageFormat format = MessageFormat.Markdown)
+    {
+        return new SendMessageRequest
+        {
+            ChatId = chatId,
+            Text = text,
+            Format = format,
+            Attachments = new List<Attachment>
+            {
+                Attachment.CreateImage(imageToken)
+            }
+        };
+    }
+
+    /// <summary>
+    /// Создаёт сообщение с файлом.
+    /// </summary>
+    public static SendMessageRequest CreateWithFile(
+        long chatId,
+        string text,
+        string fileToken,
+        MessageFormat format = MessageFormat.Markdown)
+    {
+        return new SendMessageRequest
+        {
+            ChatId = chatId,
+            Text = text,
+            Format = format,
+            Attachments = new List<Attachment>
+            {
+                Attachment.CreateFile(fileToken)
+            }
+        };
+    }
+
+    /// <summary>
+    /// Создаёт сообщение с видео.
+    /// </summary>
+    public static SendMessageRequest CreateWithVideo(
+        long chatId,
+        string text,
+        string videoToken,
+        MessageFormat format = MessageFormat.Markdown)
+    {
+        return new SendMessageRequest
+        {
+            ChatId = chatId,
+            Text = text,
+            Format = format,
+            Attachments = new List<Attachment>
+            {
+                Attachment.CreateVideo(videoToken)
             }
         };
     }

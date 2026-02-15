@@ -9,25 +9,34 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Web;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using Kub.Max.Bot.Extensions;
 
 namespace Kub.Max.Bot;
 
-
+/// <summary>
 /// Клиент для работы с MAX Bot API.
-
+/// </summary>
 public class MaxBotClient : IMaxBotClient, IDisposable
 {
     private readonly HttpClient _httpClient;
-    private readonly string _baseUrl = "https://platform-api.max.ru";
+    private readonly string _baseUrl;
     private readonly JsonSerializerOptions _jsonOptions;
+    private readonly ILogger<MaxBotClient> _logger;
     private CancellationTokenSource? _pollingCts;
     private bool _isPolling;
+    private readonly bool _ownsHttpClient;
 
-    
+    /// <summary>
     /// Создаёт новый экземпляр клиента с указанным токеном.
-    
-    public MaxBotClient(string token, HttpClient? httpClient = null)
+    /// </summary>
+    public MaxBotClient(string token, string? baseUrl = null, HttpClient? httpClient = null, ILogger<MaxBotClient>? logger = null)
     {
+        _baseUrl = baseUrl ?? "https://platform-api.max.ru";
+        _logger = logger ?? NullLogger<MaxBotClient>.Instance;
+        _ownsHttpClient = httpClient == null;
+
         _httpClient = httpClient ?? new HttpClient();
         _httpClient.BaseAddress = new Uri(_baseUrl);
         _httpClient.DefaultRequestHeaders.Add("Authorization", token);
@@ -36,32 +45,23 @@ public class MaxBotClient : IMaxBotClient, IDisposable
         _jsonOptions = new JsonSerializerOptions
         {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+            Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
         };
     }
 
-    
+    /// <summary>
     /// Создаёт новый экземпляр клиента с указанным токеном и таймаутом.
-    
-    public MaxBotClient(string token, TimeSpan timeout)
+    /// </summary>
+    public MaxBotClient(string token, TimeSpan timeout, string? baseUrl = null, ILogger<MaxBotClient>? logger = null)
+        : this(token, baseUrl, null, logger)
     {
-        _httpClient = new HttpClient
-        {
-            BaseAddress = new Uri(_baseUrl),
-            Timeout = timeout
-        };
-        _httpClient.DefaultRequestHeaders.Add("Authorization", token);
-
-        _jsonOptions = new JsonSerializerOptions
-        {
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
-        };
+        _httpClient.Timeout = timeout;
     }
 
-    
+    /// <summary>
     /// Отправляет HTTP-запрос и возвращает десериализованный ответ.
-    
+    /// </summary>
     private async Task<T> SendRequestAsync<T>(
         HttpMethod method,
         string endpoint,
@@ -78,30 +78,53 @@ public class MaxBotClient : IMaxBotClient, IDisposable
         {
             var json = JsonSerializer.Serialize(data, _jsonOptions);
             request.Content = new StringContent(json, Encoding.UTF8, "application/json");
+
+            _logger.LogDebug("Request to {Method} {Endpoint}: {Json}", method, endpoint, json);
         }
 
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
-        var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
-
-        if (!response.IsSuccessStatusCode)
+        try
         {
-            throw new MaxBotClientException(
-                $"HTTP {response.StatusCode}: {responseContent}",
-                response.StatusCode);
-        }
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
 
-        if (typeof(T) == typeof(string))
+            _logger.LogDebug("Response from {Method} {Endpoint}: Status {StatusCode}, Body: {Body}",
+                method, endpoint, response.StatusCode, responseContent);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new MaxBotClientException(
+                    $"HTTP {response.StatusCode}: {responseContent}",
+                    response.StatusCode);
+            }
+
+            if (typeof(T) == typeof(string))
+            {
+                return (T)(object)responseContent;
+            }
+
+            var result = JsonSerializer.Deserialize<T>(responseContent, _jsonOptions);
+            if (result == null)
+            {
+                throw new InvalidOperationException("Не удалось десериализовать ответ");
+            }
+
+            return result;
+        }
+        catch (HttpRequestException ex)
         {
-            return (T)(object)responseContent;
+            _logger.LogError(ex, "HTTP request failed to {Method} {Endpoint}", method, endpoint);
+            throw new MaxBotClientException($"HTTP request failed: {ex.Message}", HttpStatusCode.ServiceUnavailable, ex);
         }
-
-        return JsonSerializer.Deserialize<T>(responseContent, _jsonOptions)
-            ?? throw new InvalidOperationException("Не удалось десериализовать ответ");
+        catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogError(ex, "Request timeout to {Method} {Endpoint}", method, endpoint);
+            throw new MaxBotClientException("Request timeout", HttpStatusCode.RequestTimeout, ex);
+        }
     }
 
-    
+    /// <summary>
     /// Формирует строку запроса из словаря параметров.
-    
+    /// </summary>
     private string BuildQueryString(Dictionary<string, object?> parameters)
     {
         var queryParams = parameters
@@ -145,10 +168,10 @@ public class MaxBotClient : IMaxBotClient, IDisposable
         var messageBody = new NewMessageBody
         {
             Text = request.Text,
-            Attachments = request.Attachments,
+            Attachments = request.Attachments, // Теперь напрямую используем Attachment
             Link = request.Link,
             Notify = request.Notify,
-            Format = request.Format?.ToString().ToLower()
+            Format = request.Format?.ToString().ToLowerInvariant()
         };
 
         return await SendRequestAsync<SendMessageResponse>(
@@ -482,6 +505,35 @@ public class MaxBotClient : IMaxBotClient, IDisposable
             cancellationToken);
     }
 
+    // ===== Webhooks =====
+
+    public async Task<BaseResponse> SetWebhookAsync(string url, CancellationToken cancellationToken = default)
+    {
+        return await SendRequestAsync<BaseResponse>(
+            HttpMethod.Post,
+            "/webhook",
+            new { url },
+            cancellationToken);
+    }
+
+    public async Task<BaseResponse> DeleteWebhookAsync(CancellationToken cancellationToken = default)
+    {
+        return await SendRequestAsync<BaseResponse>(
+            HttpMethod.Delete,
+            "/webhook",
+            null,
+            cancellationToken);
+    }
+
+    public async Task<WebhookInfo> GetWebhookInfoAsync(CancellationToken cancellationToken = default)
+    {
+        return await SendRequestAsync<WebhookInfo>(
+            HttpMethod.Get,
+            "/webhook",
+            null,
+            cancellationToken);
+    }
+
     // ===== Updates (Long Polling) =====
 
     public async Task<GetUpdatesResponse> GetUpdatesAsync(GetUpdatesRequest request, CancellationToken cancellationToken = default)
@@ -509,74 +561,124 @@ public class MaxBotClient : IMaxBotClient, IDisposable
             cancellationToken);
     }
 
-    
+    /// <summary>
     /// Запускает цикл Long Polling с обработчиком обновлений.
-    
+    /// </summary>
     public async Task RunPollingAsync(
         Func<Update, IMaxBotClient, Task> updateHandler,
+        Func<Exception, Update?, Task>? errorHandler = null,
         int? limit = 100,
         int? timeout = 30,
         int maxRetries = 5,
         CancellationToken cancellationToken = default)
     {
+        if (_isPolling)
+        {
+            throw new InvalidOperationException("Polling is already running");
+        }
+
+        _isPolling = true;
+        _pollingCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
         int retryCount = 0;
         long? currentMarker = null;
 
-        while (!cancellationToken.IsCancellationRequested && retryCount < maxRetries)
+        _logger.LogInformation("Starting Long Polling with limit={Limit}, timeout={Timeout}", limit, timeout);
+
+        try
         {
-            try
+            while (!_pollingCts.Token.IsCancellationRequested && retryCount < maxRetries)
             {
-                var updatesRequest = new GetUpdatesRequest
+                try
                 {
-                    Limit = limit,
-                    Timeout = timeout,
-                    Marker = currentMarker
-                };
+                    var updatesRequest = new GetUpdatesRequest
+                    {
+                        Limit = limit,
+                        Timeout = timeout,
+                        Marker = currentMarker
+                    };
 
-                var response = await GetUpdatesAsync(updatesRequest, cancellationToken);
+                    var response = await GetUpdatesAsync(updatesRequest, _pollingCts.Token);
 
-                foreach (var update in response.Updates)
+                    if (response.Updates?.Any() == true)
+                    {
+                        _logger.LogDebug("Received {Count} updates", response.Updates.Count);
+
+                        foreach (var update in response.Updates)
+                        {
+                            try
+                            {
+                                await updateHandler(update, this);
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogError(ex, "Error in update handler for update type {UpdateType}", update.UpdateType);
+
+                                if (errorHandler != null)
+                                {
+                                    await errorHandler(ex, update);
+                                }
+                            }
+                        }
+                    }
+
+                    currentMarker = response.Marker;
+                    retryCount = 0;
+                }
+                catch (OperationCanceledException) when (_pollingCts.Token.IsCancellationRequested)
                 {
+                    _logger.LogInformation("Long Polling cancelled");
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    retryCount++;
+                    _logger.LogError(ex, "Error in Long Polling ({RetryCount}/{MaxRetries})", retryCount, maxRetries);
+
+                    if (retryCount >= maxRetries)
+                    {
+                        _logger.LogError("Max retries reached, stopping Long Polling");
+                        throw;
+                    }
+
+                    if (errorHandler != null)
+                    {
+                        await errorHandler(ex, null);
+                    }
+
+                    var delay = TimeSpan.FromSeconds(Math.Pow(2, retryCount));
+                    _logger.LogInformation("Waiting {Delay} before retry", delay);
+
                     try
                     {
-                        await updateHandler(update, this);
+                        await Task.Delay(delay, _pollingCts.Token);
                     }
-                    catch (Exception ex)
+                    catch (OperationCanceledException)
                     {
-                        Console.WriteLine($"Ошибка в обработчике обновления: {ex.Message}");
+                        break;
                     }
                 }
-
-                currentMarker = response.Marker;
-                retryCount = 0;
             }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
-            catch (Exception ex)
-            {
-                retryCount++;
-                Console.WriteLine($"Ошибка в Long Polling ({retryCount}/{maxRetries}): {ex.Message}");
-
-                if (retryCount >= maxRetries)
-                    throw;
-
-                var delay = TimeSpan.FromSeconds(Math.Pow(2, retryCount));
-                await Task.Delay(delay, cancellationToken);
-            }
+        }
+        finally
+        {
+            _isPolling = false;
         }
     }
 
-    
+    /// <summary>
     /// Останавливает Long Polling.
-    
+    /// </summary>
     public void StopPolling()
     {
-        _isPolling = false;
-        _pollingCts?.Cancel();
-        _pollingCts?.Dispose();
-        _pollingCts = null;
+        if (_isPolling)
+        {
+            _logger.LogInformation("Stopping Long Polling");
+            _pollingCts?.Cancel();
+            _pollingCts?.Dispose();
+            _pollingCts = null;
+            _isPolling = false;
+        }
     }
 
     // ===== IDisposable =====
@@ -584,8 +686,34 @@ public class MaxBotClient : IMaxBotClient, IDisposable
     public void Dispose()
     {
         StopPolling();
-        _httpClient?.Dispose();
+
+        if (_ownsHttpClient)
+        {
+            _httpClient?.Dispose();
+        }
+
         _pollingCts?.Dispose();
         GC.SuppressFinalize(this);
     }
+}
+
+/// <summary>
+/// Информация о вебхуке
+/// </summary>
+public class WebhookInfo
+{
+    [JsonPropertyName("url")]
+    public string? Url { get; set; }
+
+    [JsonPropertyName("has_custom_certificate")]
+    public bool HasCustomCertificate { get; set; }
+
+    [JsonPropertyName("pending_update_count")]
+    public int PendingUpdateCount { get; set; }
+
+    [JsonPropertyName("last_error_date")]
+    public long? LastErrorDate { get; set; }
+
+    [JsonPropertyName("last_error_message")]
+    public string? LastErrorMessage { get; set; }
 }

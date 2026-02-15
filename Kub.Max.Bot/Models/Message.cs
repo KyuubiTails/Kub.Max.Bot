@@ -3,9 +3,9 @@ using System.Text.Json.Serialization;
 
 namespace Kub.Max.Bot.Models;
 
-
+/// <summary>
 /// Сообщение.
-
+/// </summary>
 public class Message
 {
     [JsonPropertyName("sender")]
@@ -30,9 +30,9 @@ public class Message
     public string? Url { get; set; }
 }
 
-
+/// <summary>
 /// Получатель сообщения.
-
+/// </summary>
 public class Recipient
 {
     [JsonPropertyName("chat_id")]
@@ -42,9 +42,9 @@ public class Recipient
     public long? UserId { get; set; }
 }
 
-
+/// <summary>
 /// Связанное сообщение (пересланное или ответное).
-
+/// </summary>
 public class LinkedMessage
 {
     [JsonPropertyName("type")]
@@ -60,9 +60,9 @@ public class LinkedMessage
     public MessageBody? Body { get; set; }
 }
 
-
+/// <summary>
 /// Статистика сообщения.
-
+/// </summary>
 public class MessageStat
 {
     [JsonPropertyName("views")]

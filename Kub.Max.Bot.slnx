@@ -1,3 +1,7 @@
 <Solution>
+  <Project Path="Example.Bot.Inlinebutton/Example.Bot.Inlinebutton.csproj" Id="ee5ae3aa-5e87-44db-ae00-a08dd993b44c" />
+  <Project Path="Example.Bot.Send.Images/Example.Bot.Send.Images.csproj" Id="10ca6f2c-742b-4124-b9db-d1669191b186" />
+  <Project Path="Example.Dialog.Bot/Example.Dialog.Bot.csproj" Id="4f7cd15d-31a2-4930-84b8-bedc22a4d2ca" />
+  <Project Path="Example.Echo.Bot/Example.Echo.Bot.csproj" Id="b51390af-4738-42c5-a8b9-8602470a31c8" />
   <Project Path="Kub.Max.Bot/Kub.Max.Bot.csproj" />
 </Solution>

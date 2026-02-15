@@ -24,5 +24,5 @@ public class Callback
     public string? MessageId { get; set; }
 
     [JsonPropertyName("chat_id")]
-    public long? ChatId { get; set; }
+    public long ChatId { get; set; }
 }

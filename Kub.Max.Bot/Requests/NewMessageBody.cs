@@ -1,17 +1,18 @@
-﻿using System.Text.Json.Serialization;
+﻿using Kub.Max.Bot.Models;
+using System.Text.Json.Serialization;
 
 namespace Kub.Max.Bot.Requests;
 
-
+/// <summary>
 /// Тело нового сообщения.
-
+/// </summary>
 public class NewMessageBody
 {
     [JsonPropertyName("text")]
     public string? Text { get; set; }
 
     [JsonPropertyName("attachments")]
-    public List<AttachmentRequest>? Attachments { get; set; }
+    public List<Attachment>? Attachments { get; set; }
 
     [JsonPropertyName("link")]
     public NewMessageLink? Link { get; set; }
@@ -23,9 +24,9 @@ public class NewMessageBody
     public string? Format { get; set; }
 }
 
-
+/// <summary>
 /// Ссылка на сообщение при ответе/пересылке.
-
+/// </summary>
 public class NewMessageLink
 {
     [JsonPropertyName("type")]
